@@ -3,836 +3,6 @@ import random
 from graphics import *
 
 
-def sort_helper(country):
-    return country.get_elo()
-
-
-def sort_helper_2(team_array):
-    return team_array[7]
-
-def sort_helper_3(team_array):
-    return team_array[2]
-
-def sort_helper_4(competition_country):
-    return competition_country.get_rank()
-
-class Round:
-
-    def __init__(self, num_of_teams, robin, neutral, round_number, sort_type="None"):
-        self.num_of_teams = num_of_teams
-        self.robin = robin
-        self.neutral = neutral
-        self.round_number = round_number
-        self.sort_type = sort_type
-        self.teams = None
-        self.high_rank = 0
-        self.low_rank = 0
-        self.lowest_advancing_rank = 0
-        self.num_advancing = 0
-
-    def set_teams(self, teams, high_rank, low_rank):
-        self.teams = teams
-        self.high_rank = high_rank
-        self.low_rank = low_rank
-        self.lowest_advancing_rank = self.high_rank + self.num_advancing
-
-    def get_num_of_teams(self):
-        return self.num_of_teams
-
-    def get_round_number(self):
-        return self.round_number
-
-class GroupRound(Round):
-
-    def __init__(self, teams, robin, neutral, round_number, num_advancing, num_groups, sort_type="Group Rank"):
-        super().__init__(teams, robin, neutral, round_number, sort_type)
-        self.num_groups = num_groups
-        self.num_advancing = num_advancing
-        self.groups = []
-        self.has_drawn = False
-
-    def draw_groups(self):
-        teams_helper = [None] * len(self.teams)
-        for i in range(len(self.teams)):
-            teams_helper[i] = self.teams[i]
-        pots = [[]]
-        groups = []
-        current_num = 0
-        pot_count = 0
-        end_num = self.num_groups
-        teams_helper.sort(key=sort_helper_4)
-        while len(teams_helper) > 0:
-            if current_num == end_num:
-                pots.append([])
-                pot_count += 1
-                current_num = end_num
-                end_num += self.num_groups
-            pots[pot_count].append(teams_helper.pop(0))
-            current_num += 1
-        print(pots)
-        for k in range(self.num_groups):
-            new_group = []
-            for i in range(len(pots)):
-                if len(pots[i]) == 0:
-                    continue
-                lenpot = len(pots[i])
-                rando = random.random()
-                numbo = int(lenpot * rando)
-                new_group.append(pots[i].pop(numbo))
-            groups.append(new_group)
-        for group in groups:
-            new_group = Group(group, self.neutral, self.robin)
-            self.groups.append(new_group)
-        for group in self.groups:
-            group.print_standings()
-        self.has_drawn = True
-
-    def play_round(self):
-        self.draw_groups()
-        #for group in self.groups:
-            #group.play_current_matchday()
-            #group.print_standings()
-        matchdays_to_play = True
-        while matchdays_to_play:
-            for group in self.groups:
-                group.print_current_matchday()
-                group.play_current_matchday()
-                group.print_standings()
-            matchdays_to_play = self.increment_matchday()
-        self.round_end()
-
-    def round_end(self):
-        if self.sort_type == "Group Position":
-            curr_rank = self.high_rank
-            for group in self.groups:
-                teams_list = group.get_teams_in_group()
-                for i in range(len(teams_list)):
-                    new_rank = i * self.num_groups + curr_rank
-                    teams_list[i][0].set_rank(new_rank)
-                curr_rank += 1
-        if self.sort_type == "Group Rank":
-            rank_list = []
-            for group_index in range(len(self.groups)):
-                teams_list = self.groups[group_index].get_teams_in_group()
-                if group_index == 0:
-                    for k in range(len(teams_list)):
-                        rank_list.append([])
-                for i in range(len(teams_list)):
-                    rank_list[i].append(teams_list[i])
-
-            for team_list in rank_list:
-                team_list.sort(key=lambda item: (item[7], item[6], item[4]), reverse=True)
-            curr_rank = self.high_rank
-            for team_list in rank_list:
-                for team in team_list:
-                    team[0].set_rank(curr_rank)
-                    curr_rank += 1
-            #for group in self.groups:
-                #teams_list
-        self.teams.sort(key=sort_helper_4)
-        for team in self.teams:
-            if team.get_rank() < self.lowest_advancing_rank:
-                print(team.get_name() + " advances.")
-                team.increment_round()
-            else:
-                print(team.get_name() + " is eliminated.")
-
-
-
-    def increment_matchday(self):
-        matchdays_to_play = False
-        for group in self.groups:
-            if group.increment_matchday():
-                matchdays_to_play = True
-        return matchdays_to_play
-
-
-class TieRound(Round):
-
-    def __init__(self, num_of_teams, robin, neutral, round_number, draw_style, sort_type="None"):
-        super().__init__(num_of_teams, robin, neutral, round_number, sort_type)
-        self.draw_style = draw_style
-        self.has_drawn = False
-        self.ties = []
-
-    def draw_ties(self):
-        if self.draw_style == "Pots":
-            return self.draw_ties_pots()
-        elif self.draw_style == "Seeded":
-            return self.draw_ties_seeded()
-
-    def draw_ties_seeded(self):
-        ties = []
-        home_team_index = 0
-        away_team_index = len(self.teams) - 1
-        teams_helper = [None] * len(self.teams)
-        for i in range(len(self.teams)):
-            teams_helper[i] = self.teams[i]
-        teams_helper.sort(key=sort_helper_4)
-        while home_team_index < away_team_index:
-            new_tie = Tie([teams_helper[home_team_index], teams_helper[away_team_index]], self.neutral, self.robin)
-            home_team_index += 1
-            away_team_index -= 1
-            ties.append(new_tie)
-        return ties
-
-
-    def draw_ties_pots(self):
-        ties = []
-        pot1 = []
-        pot2 = []
-        pot_size = len(self.teams) // 2
-        for i in range(pot_size):
-            pot1.append(self.teams[i])
-            pot2.append(self.teams[i + pot_size])
-
-        for i in range(pot_size):
-            new_tie = [None, None]
-            lenpot = len(pot1)
-            rando = random.random()
-            numbo = int(lenpot * rando)
-            new_tie[1] = pot1.pop(numbo)
-            lenpot = len(pot2)
-            rando = random.random()
-            numbo = int(lenpot * rando)
-            new_tie[0] = pot2.pop(numbo)
-            new_tie_object = Tie(new_tie, self.neutral, self.robin)
-            ties.append(new_tie_object)
-        return ties
-
-    def increment_matchday(self):
-        matchdays_to_play = False
-        for tie in self.ties:
-            if tie.increment_matchday():
-                matchdays_to_play = True
-        return matchdays_to_play
-
-    def play_round(self):
-        if not self.has_drawn:
-            self.ties = self.draw_ties()
-        print()
-        matchdays_to_play = True
-        while matchdays_to_play:
-            for tie in self.ties:
-                tie.print_current_matchday()
-                tie.play_current_matchday()
-            matchdays_to_play = self.increment_matchday()
-        self.round_end()
-
-    def round_end(self):
-        curr_win_rank = self.high_rank
-        curr_lose_rank = self.low_rank
-
-        for tie in self.ties:
-            tie.print_result()
-            winner = tie.get_winner()
-            loser = tie.get_loser()
-            winner.increment_round()
-            winner.set_rank(curr_win_rank)
-            curr_win_rank += 1
-            loser.set_rank(curr_lose_rank)
-            curr_lose_rank -= 1
-            print(winner.get_name() + " advances.")
-            print(loser.get_name() + " is eliminated.")
-            # str(self.agg_away_score))
-            # print(away_country.get_name() + " is eliminated.")
-
-class KnockoutRound(Round):
-
-    def __init__(self, num_of_teams, robin, neutral, round_number, draw_style, sort_type="Bracket"):
-        super().__init__(num_of_teams, robin, neutral, round_number, sort_type)
-        self.draw_style = draw_style
-
-    def play_round(self):
-        no_champion = True
-        knockout_round_number = 3
-        num_still_remaining = self.num_of_teams
-        while no_champion:
-            teams_for_round = []
-            knockout_round = TieRound(num_still_remaining, self.robin, self.neutral, knockout_round_number, self.draw_style)
-            knockout_round.set_teams(self.teams, self.high_rank, self.low_rank)
-            knockout_round.play_round()
-            knockout_round_number += 1
-            self.teams.sort(key=sort_helper_4)
-
-
-            num_still_remaining = num_still_remaining // 2
-
-            new_teams_list = [None]*num_still_remaining
-            for i in range(num_still_remaining):
-                new_teams_list[i] = self.teams[i]
-            self.teams = new_teams_list
-            if num_still_remaining == 1:
-                no_champion = False
-        print()
-        print(self.teams[i].get_name() + " is the champion.")
-            
-
-class CompetitionCountry:
-
-    def __init__(self, country, rank):
-        self.country = country
-        self.rank = rank
-        self.round = 1
-
-    def set_rank(self, rank):
-        self.rank = rank
-
-    def get_rank(self):
-        return self.rank
-
-    def get_round(self):
-        return self.round
-
-    def get_country(self):
-        return self.country
-
-    def get_code(self):
-        return self.country.get_code()
-
-    def get_name(self):
-        return self.country.get_name()
-
-    def get_elo(self):
-        return self.country.get_elo()
-
-    def get_region(self):
-        return self.country.get_region()
-
-    def get_conf(self):
-        return self.country.get_conf()
-
-    def increment_round(self):
-        self.round += 1
-
-    def set_elo(self, new_elo):
-        self.country.set_elo(new_elo)
-
-class Competition:
-
-    def __init__(self, title, conf, region, teams):
-        self.title = title
-        self.conf = conf
-        self.region = region
-        self.teams = []
-        self.current_round = 1
-        self.rounds = []
-        for i in range(len(teams)):
-            new_comp_country = CompetitionCountry(teams[i], i+1)
-            self.teams.append(new_comp_country)
-
-    def get_teams_for_round(self, round):
-        self.teams.sort(key=sort_helper_4, reverse=True)
-        num_of_teams = round.get_num_of_teams()
-        round_number = round.get_round_number()
-        competing_counter = num_of_teams
-        list_of_teams_in_round = []
-        first = True
-        high_rank = 0
-        low_rank = 0
-        for team in self.teams:
-            if team.get_round() < round_number:
-                continue
-            if competing_counter > 0:
-                if first:
-                    low_rank = team.get_rank()
-                    first = False
-                list_of_teams_in_round.append(team)
-                high_rank = team.get_rank()
-                competing_counter -= 1
-            else:
-                team.increment_round()
-        round.set_teams(list_of_teams_in_round, high_rank, low_rank)
-
-    def add_round(self, round_type, num_of_teams, num_advancing, neutral, robin, round_number, num_groups=1, draw_style="Pots", sort_type="None"):
-        new_round = None
-        if round_type == "Groups":
-            if sort_type is not None:
-                new_round = GroupRound(num_of_teams, robin, neutral, round_number, num_advancing, num_groups, sort_type)
-            else:
-                new_round = GroupRound(num_of_teams, robin, neutral, round_number, num_advancing, num_groups)
-        elif round_type == "Ties":
-            new_round = TieRound(num_of_teams, robin, neutral, round_number, draw_style, sort_type)
-        elif round_type == "Knockout":
-            new_round = KnockoutRound(num_of_teams, robin, neutral, round_number, draw_style, sort_type)
-        self.rounds.append(new_round)
-
-
-    def add_groups_round(self, num_of_teams_competing, group_number):
-        competing_counter = num_of_teams_competing
-        list_of_teams_in_round = []
-        self.teams.sort(key=sort_helper_3, reverse=True)
-        for team in self.teams:
-            if team[1] < self.current_round:
-                continue
-            if competing_counter > 0:
-                list_of_teams_in_round.append(team)
-                competing_counter -= 1
-            else:
-                team[1] += 1
-        list_of_teams_in_round.sort(key=sort_helper_3)
-        self.draw_groups(list_of_teams_in_round, group_number)
-
-    def draw_groups(self, teams, group_number):
-        pots = [[]]
-        groups = []
-        current_num = 0
-        pot_count = 0
-        end_num = group_number
-        while len(teams) > 0:
-            if current_num == end_num:
-                pots.append([])
-                pot_count += 1
-                current_num = end_num
-                end_num += group_number
-            pots[pot_count].append(teams.pop(0))
-            current_num += 1
-        print(pots)
-        for k in range(group_number):
-            new_group = []
-            for i in range(len(pots)):
-                if len(pots[i]) == 0:
-                    continue
-                lenpot = len(pots[i])
-                rando = random.random()
-                numbo = int(lenpot * rando)
-                new_group.append(pots[i].pop(numbo))
-            groups.append(new_group)
-        for group in groups:
-            countries_in_group = []
-            for country in group:
-                countries_in_group.append(country[0])
-            new_group = Group(countries_in_group, False, 1)
-            self.round_groups.append(new_group)
-        for group in self.round_groups:
-            group.print_standings()
-
-
-    def draw_ties(self, teams):
-        ties = []
-        pot1 = []
-        pot2 = []
-        pot_size = len(teams) // 2
-        for i in range(pot_size):
-            pot1.append(teams[i])
-            pot2.append(teams[i + pot_size])
-
-
-
-        for i in range(pot_size):
-            new_tie = []
-            lenpot = len(pot1)
-            rando = random.random()
-            numbo = int(lenpot * rando)
-            new_tie.append(pot1.pop(numbo))
-            lenpot = len(pot2)
-            rando = random.random()
-            numbo = int(lenpot * rando)
-            new_tie.append(pot2.pop(numbo))
-            ties.append(new_tie)
-        return ties
-
-    def add_ties_round(self, num_of_teams_competing, seeded=True):
-        self.teams.sort(key=sort_helper_3, reverse=True)
-        competing_counter = num_of_teams_competing
-        list_of_teams_in_round = []
-        for team in self.teams:
-            if team[1] < self.current_round:
-                continue
-            if competing_counter > 0:
-                list_of_teams_in_round.append(team)
-                competing_counter -= 1
-            else:
-                team[1] += 1
-        round_ties_help = self.draw_ties(list_of_teams_in_round)
-        for tie in round_ties_help:
-            countries_in_tie = []
-            for country in tie:
-                countries_in_tie.append(country[0])
-            new_group = Group(countries_in_tie, False, 2, tie=True)
-            self.round_groups.append(new_group)
-        for group in self.round_groups:
-            group.print_standings()
-
-
-    def play_current_round(self):
-        current_round = self.rounds[self.current_round - 1]
-        self.get_teams_for_round(current_round)
-        current_round.play_round()
-        self.current_round += 1
-
-
-
-    def print_current_matchday(self, round_groups):
-        for group in round_groups:
-            group.print_current_matchday()
-
-    def play_current_matchday(self, round_groups):
-        for group in round_groups:
-            group.play_current_matchday()
-
-    def increment_matchday(self, round_groups):
-        matchdays_to_play = False
-        for group in round_groups:
-            if group.increment_matchday():
-                matchdays_to_play = True
-        return matchdays_to_play
-
-    def get_title(self):
-        return self.title
-
-class Match:
-
-    def __init__(self, home_country, away_country, home_score=0, away_score=0, neutral=False, played=False, winner=False):
-        self.home_country = home_country
-        self.away_country = away_country
-        self.home_score = home_score
-        self.away_score = away_score
-        self.neutral = neutral
-        self.played = played
-        self.winner = winner
-        self.pens = False
-        self.pwinner = 0
-        self.aggregate = 0
-
-    def set_winner_true(self):
-        self.winner = True
-
-    def set_aggregate(self, aggregate):
-        self.aggregate = aggregate
-
-    def get_home_goals(self):
-        return self.home_score
-
-    def get_away_goals(self):
-        return self.away_score
-
-    def get_home_code(self):
-        return self.home_country.get_code()
-
-    def get_away_code(self):
-        return self.away_country.get_code()
-
-    def get_pens(self):
-        return self.pens
-
-    def get_pwinner(self):
-        return self.pwinner
-
-    def print_match(self):
-        if not self.played:
-            print(self.home_country.get_code() + " vs. " + self.away_country.get_code())
-        else:
-            print(self.home_country.get_code + " " + str(self.home_score) + " - " + str(self.away_score) + " " + self.away_country.get_code())
-
-    def play_match(self):
-        if self.played:
-            print("Match already played")
-        else:
-            self.home_score, self.away_score, self.pens, self.pwinner = sim_game(self.home_country, self.away_country, self.neutral, self.winner, self.aggregate)
-            self.played = True
-
-class Tie:
-
-    def __init__(self, teams, neutral, robin):
-        self.teams = teams
-        self.neutral = neutral
-        self.robin = robin
-        self.current_matchday = 0
-        self.matchdays = self.create_match_list()
-        self.agg_home_score = 0
-        self.agg_away_score = 0
-        self.pwinner = None
-        self.winner = None
-        self.loser = None
-        self.win_score = 0
-        self.lose_score = 0
-
-
-    def get_winner(self):
-        return self.winner
-
-    def get_loser(self):
-        return self.loser
-
-    def increment_matchday(self):
-        self.current_matchday += 1
-        if self.current_matchday >= len(self.matchdays):
-            return False
-        return True
-
-    def create_match_list(self):
-        home_match = Match(self.teams[0], self.teams[1])
-        away_match = Match(self.teams[1], self.teams[0])
-        if self.robin == 1:
-            return [home_match]
-        if self.robin == 2:
-            return [away_match, home_match]
-
-    def print_current_matchday(self):
-        match = self.matchdays[self.current_matchday]
-        if self.current_matchday == 1:
-            print("First Leg: " + match.get_away_code() + ": " + str(self.agg_away_score) + " " + match.get_home_code()
-                  + ": " + str(self.agg_home_score))
-        print(match.get_home_code() + " vs. " + match.get_away_code())
-
-    def play_current_matchday(self):
-        match = self.matchdays[self.current_matchday]
-        if self.current_matchday == 1:
-            match.set_aggregate(self.agg_home_score - self.agg_away_score)
-            match.set_winner_true()
-        if len(self.matchdays) == 1:
-            match.set_winner_true()
-        match.play_match()
-        self.update_stats(match)
-        if self.current_matchday == len(self.matchdays) - 1:
-            self.decide_winners()
-
-    def update_stats(self, match):
-        if len(self.matchdays) == 2 and self.current_matchday == 0:
-            self.agg_away_score += match.get_home_goals()
-            self.agg_home_score += match.get_away_goals()
-        else:
-            self.agg_away_score += match.get_away_goals()
-            self.agg_home_score += match.get_home_goals()
-        self.pwinner = match.get_pwinner()
-
-    def print_result(self):
-        print(self.winner.get_name() + ": " + str(self.win_score) + " - " + self.loser.get_name() + ": " + str(self.lose_score))
-        if self.win_score == self.lose_score:
-            print(self.winner.get_name() + " wins the penalty shootout.")
-
-    def decide_winners(self):
-        home_country = self.teams[0]
-        away_country = self.teams[1]
-        if self.agg_home_score > self.agg_away_score:
-            #home_country.increment_round()
-            #print(home_country.get_name() + " advances with an aggregate score " + str(self.agg_home_score) + "-" +
-                  #str(self.agg_away_score))
-            #print(away_country.get_name() + " is eliminated.")
-            self.winner = home_country
-            self.loser = away_country
-            self.win_score = self.agg_home_score
-            self.lose_score = self.agg_away_score
-        elif self.agg_home_score < self.agg_away_score:
-            #away_country.increment_round()
-            #print(away_country.get_name() + " advances with an aggregate score " + str(self.agg_away_score) + "-" +
-                  #str(self.agg_home_score))
-            #print(home_country.get_name() + " is eliminated.")
-            self.winner = away_country
-            self.loser = home_country
-            self.win_score = self.agg_away_score
-            self.lose_score = self.agg_home_score
-        else:
-            if self.pwinner == 0:
-                #home_country.increment_round()
-                #print(home_country.get_name() + " advances on penalties after an aggregate score "
-                      #+ str(self.agg_away_score) + "-" + str(self.agg_home_score))
-                #print(away_country.get_name() + " is eliminated.")
-                self.winner = home_country
-                self.loser = away_country
-            else:
-                #away_country.increment_round()
-                #print(away_country.get_name() + " advances on penalties after an aggregate score "
-                      #+ str(self.agg_away_score) + "-" + str(self.agg_home_score))
-                #print(home_country.get_name() + " is eliminated.")
-                self.winner = away_country
-                self.loser = home_country
-            self.win_score = self.agg_away_score
-            self.lose_score = self.agg_home_score
-
-
-
-
-
-class Group:
-
-    def __init__(self, teams, neutral, robin):
-        self.teams_in_group = []
-        for team in teams:
-            # 0-country object, 1-wins, 2-draws, 3-losses, 4-goals for, 5-goals against, 6-goal difference, 7-points
-            group_team = [team, 0, 0, 0, 0, 0, 0, 0]
-            self.teams_in_group.append(group_team)
-
-        self.neutral = neutral
-        self.robin = robin
-        self.matchdays = self.create_match_list()
-        self.current_matchday = 0
-
-    def get_next_matchday(self):
-        return self.matchdays[self.current_matchday]
-
-    def increment_matchday(self):
-        self.current_matchday += 1
-        if self.current_matchday >= len(self.matchdays):
-            return False
-        return True
-
-    def get_current_matchday(self):
-        if self.current_matchday >= len(self.matchdays):
-            return -1
-        return self.current_matchday
-
-    def print_current_matchday(self):
-        for match in self.matchdays[self.current_matchday]:
-            print(match.get_home_code() + " vs. " + match.get_away_code())
-
-    def play_current_matchday(self):
-        for match in self.matchdays[self.current_matchday]:
-            match.play_match()
-            self.update_stats(match)
-            print()
-
-
-    #def input_match(self, home_country, away_country, result):
-        #self.update_stats((self.matchdays[i_1][i_2][0]), result[0], result[1])
-        #self.update_stats((self.matchdays[i_1][i_2][1]), result[1], result[0])
-
-    def update_stats(self, match):
-        home_goals = match.get_home_goals()
-        away_goals = match.get_away_goals()
-        for i in range(len(self.teams_in_group)):
-            if match.get_home_code() == self.teams_in_group[i][0].get_code():
-                index = i
-        home_team_stats_list = self.get_teams_in_group()[index]
-        for i in range(len(self.teams_in_group)):
-            if match.get_away_code() == self.teams_in_group[i][0].get_code():
-                index = i
-        away_team_stats_list = self.get_teams_in_group()[index]
-        if home_goals > away_goals:
-            home_team_stats_list[1] = home_team_stats_list[1] + 1
-            home_team_stats_list[7] = home_team_stats_list[7] + 3
-            away_team_stats_list[3] = away_team_stats_list[3] + 1
-        elif home_goals == away_goals:
-            home_team_stats_list[2] = home_team_stats_list[2] + 1
-            home_team_stats_list[7] = home_team_stats_list[7] + 1
-            away_team_stats_list[2] = away_team_stats_list[2] + 1
-            away_team_stats_list[7] = away_team_stats_list[7] + 1
-        else:
-            home_team_stats_list[3] = home_team_stats_list[3] + 1
-            away_team_stats_list[1] = away_team_stats_list[1] + 1
-            away_team_stats_list[7] = away_team_stats_list[7] + 3
-        home_team_stats_list[4] = home_team_stats_list[4] + home_goals
-        home_team_stats_list[5] = home_team_stats_list[5] + away_goals
-        home_team_stats_list[6] = home_team_stats_list[4] - home_team_stats_list[5]
-        away_team_stats_list[4] = away_team_stats_list[4] + away_goals
-        away_team_stats_list[5] = away_team_stats_list[5] + home_goals
-        away_team_stats_list[6] = away_team_stats_list[4] - away_team_stats_list[5]
-
-
-
-    def next_matchday(self):
-        self.current_matchday = self.current_matchday + 1
-
-    def get_teams_in_group(self):
-        return self.teams_in_group
-
-    def get_neutral(self):
-        return self.neutral
-
-    def create_match_list(self):
-        odd = True
-        matchday_num = len(self.teams_in_group)
-        positions = (matchday_num + 1) // 2
-        if len(self.teams_in_group) % 2 == 0:
-            odd = False
-            matchday_num = matchday_num - 1
-        matchday_num = matchday_num * self.robin
-        matchdays = []
-
-        pos_array = [None]*positions
-        for i in range(len(pos_array)):
-            pos_array[i] = i
-
-        for i in range(matchday_num):
-            curr_match_day = []
-            for j in range(positions - 1):
-                team1 = self.teams_in_group[pos_array[j]][0]
-                temp = ((positions - j) - 1) * 2
-                team2 = self.teams_in_group[(pos_array[j] + temp) % ((positions * 2) - 1)][0]
-                if i % 2 == 0:
-                    new_match = Match(team1, team2)
-                    curr_match_day.append(new_match)
-                else:
-                    new_match = Match(team2, team1)
-                    curr_match_day.append(new_match)
-                #print("______")
-            if not odd:
-                team1 = self.teams_in_group[pos_array[positions - 1]][0]
-                team2 = self.teams_in_group[len(self.teams_in_group) - 1][0]
-                if i % 2 == 0:
-                    new_match = Match(team1, team2)
-                    curr_match_day.append(new_match)
-                    #curr_match_day.append([team1, team2, False])
-                else:
-                    new_match = Match(team2, team1)
-                    curr_match_day.append(new_match)
-                    #curr_match_day.append([team2, team1, False])
-            # print("____")
-            # print("____")
-            for k in range(len(pos_array)):
-                if pos_array[k] == 0:
-                    if odd:
-                        pos_array[k] = len(self.teams_in_group) - 1
-                    else:
-                        pos_array[k] = len(self.teams_in_group) - 2
-                else:
-                    pos_array[k] = pos_array[k] - 1
-            matchdays.append(curr_match_day)
-        if self.robin == 2 and len(matchdays) == 6:
-            temp = matchdays[0]
-            matchdays[0] = matchdays[3]
-            matchdays[3] = temp
-        return matchdays
-
-    def get_standings(self):
-        self.teams_in_group.sort(key=lambda item: (item[7], item[6], item[4]), reverse=True)
-        return self.teams_in_group
-
-
-    def print_standings(self):
-        self.get_standings()
-        print("                                      W - D - L  GF-GA\tGD\tPTS")
-        index = 1
-        for team_array in self.teams_in_group:
-            print(f"{index}  {team_array[0].get_code()}  {team_array[0].get_name():30}{team_array[1]} - "
-                  f"{team_array[2]} - {team_array[3]}   {team_array[4]}-{team_array[5]}   "
-                  f"{team_array[6]}    {team_array[7]}")
-            index = index + 1
-            #print(str(index) + "\t" + team_array[0].get_code() + "\t\t" + team_array[0].get_name() + "\t\t" +
-            #      str(team_array[1]) + "-" + str(team_array[2]) + "-" + str(team_array[3]) + "\t" + str(team_array[4])
-            #      + "-" + str(team_array[5]) + "\t\t" + str(team_array[6]))
-        print()
-
-
-class Country:
-
-    def __init__(self, code, name, elo, conf, region):
-        self.conf = conf
-        self.region = region
-        self.code = code
-        self.name = name
-        self.elo = float(elo)
-
-    def get_code(self):
-        return self.code
-
-    def get_name(self):
-        return self.name
-
-    def get_region(self):
-        return self.region
-
-    def get_elo(self):
-        return self.elo
-
-    def set_elo(self, elo):
-        self.elo = elo
-
-    def get_conf(self):
-        return self.conf
-
-
 def write_country_to_file(country, file_name):
     file1 = open(file_name, "a")
     file1.write(str(country.get_code()) + "_" + country.get_name() + "_" + str(country.get_elo()) + "_" +
@@ -976,66 +146,979 @@ def set_elo(country_1, country_2, result, home):
     new_elo_1 = country_1.get_elo() + (k_rate * (game_res_1 - expected_res_1))
     new_elo_2 = country_2.get_elo() + (k_rate * (game_res_2 - expected_res_2))
 
-    print(country_1.get_code() + ": " + str(country_1.get_elo()) + " -> " + str(new_elo_1))
-    print(country_2.get_code() + ": " + str(country_2.get_elo()) + " -> " + str(new_elo_2))
-    print()
+    #print(country_1.get_code() + ": " + str(country_1.get_elo()) + " -> " + str(new_elo_1))
+    #print(country_2.get_code() + ": " + str(country_2.get_elo()) + " -> " + str(new_elo_2))
+    #print()
 
     country_1.set_elo(new_elo_1)
     country_2.set_elo(new_elo_2)
 
-def sim_game(home_country, away_country, neutral, winner, aggregate=0):
-    diff = home_country.get_elo() - away_country.get_elo()
-    home_score = 0
-    away_score = 0
-    if not neutral:
-        diff = diff + 100
-    home_rand = .017 + (.000017 * diff)
-    away_rand = .017 - (.000017 * diff)
-    if home_rand < .002:
-        home_rand = .002
-    if away_rand < .002:
-        away_rand = .002
-    # print(home_rand)
-    # print(away_rand)
-    for i in range(1, 91):
-        if random.random() < home_rand:
-            print(home_country.get_name() + " Goal in minute " + str(i))
-            home_score = home_score + 1
-        if random.random() < away_rand:
-            print(away_country.get_name() + " Goal in minute " + str(i))
-            away_score = away_score + 1
 
-    print("Final score: " + home_country.get_code() + str(home_score) + "-" + away_country.get_code() +
-          str(away_score) + "\n")
 
-    result = home_score - away_score
 
-    if (result + aggregate == 0) and winner:
-        for i in range(91, 121):
+def sort_helper(country):
+    return country.get_elo()
+
+
+def sort_helper_2(team_array):
+    return team_array[7]
+
+def sort_helper_3(team_array):
+    return team_array[2]
+
+def sort_helper_4(competition_country):
+    return competition_country.get_rank()
+
+#def text_output(self, outputs):
+#    for output in outputs:
+#        print(output)
+
+class Round:
+
+    def __init__(self, num_of_teams, robin, neutral, round_number, print_package, sort_type="None"):
+        self.num_of_teams = num_of_teams
+        self.robin = robin
+        self.neutral = neutral
+        self.round_number = round_number
+        self.sort_type = sort_type
+        self.teams = None
+        self.high_rank = 0
+        self.low_rank = 0
+        self.lowest_advancing_rank = 0
+        self.num_advancing = 0
+
+
+    def set_teams(self, teams, high_rank, low_rank):
+        self.teams = teams
+        self.high_rank = high_rank
+        self.low_rank = low_rank
+        self.lowest_advancing_rank = self.high_rank + self.num_advancing
+
+    def get_num_of_teams(self):
+        return self.num_of_teams
+
+    def get_round_number(self):
+        return self.round_number
+
+#    def __str__(self):
+#        myStr = ''
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+#        myStr = 'Number of Teams: ' + str(self.num_of_teams) + myStr
+
+class GroupRound(Round):
+
+    def __init__(self, teams, robin, neutral, round_number, num_advancing, num_groups, print_package, sort_type="Group Rank"):
+        super().__init__(teams, robin, neutral, round_number, print_package, sort_type)
+        self.num_groups = num_groups
+        self.num_advancing = num_advancing
+        self.groups = []
+        self.has_drawn = False
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.print_package.append("Round " + str(round_number))
+        self.print_package.append(str(robin) + " Robin Group")
+
+    def draw_groups(self):
+        teams_helper = [None] * len(self.teams)
+        for i in range(len(self.teams)):
+            teams_helper[i] = self.teams[i]
+        pots = [[]]
+        groups = []
+        current_num = 0
+        pot_count = 0
+        end_num = self.num_groups
+        teams_helper.sort(key=sort_helper_4)
+        while len(teams_helper) > 0:
+            if current_num == end_num:
+                pots.append([])
+                pot_count += 1
+                current_num = end_num
+                end_num += self.num_groups
+            pots[pot_count].append(teams_helper.pop(0))
+            current_num += 1
+        print(pots)
+#        text_output(pots)
+        for k in range(self.num_groups):
+            new_group = []
+            for i in range(len(pots)):
+                if len(pots[i]) == 0:
+                    continue
+                lenpot = len(pots[i])
+                rando = random.random()
+                numbo = int(lenpot * rando)
+                new_group.append(pots[i].pop(numbo))
+            groups.append(new_group)
+        for group in groups:
+            new_group = Group(group, self.neutral, self.robin, self.print_package)
+            self.groups.append(new_group)
+        for group in self.groups:
+            group.print_standings()
+        self.has_drawn = True
+
+    def play_round(self):
+        self.draw_groups()
+        #for group in self.groups:
+            #group.play_current_matchday()
+            #group.print_standings()
+        matchdays_to_play = True
+        while matchdays_to_play:
+            for group in self.groups:
+                group.print_current_matchday()
+                group.play_current_matchday()
+                group.print_standings()
+            matchdays_to_play = self.increment_matchday()
+        self.round_end()
+
+    def round_end(self):
+        if self.sort_type == "Group Position":
+            curr_rank = self.high_rank
+            for group in self.groups:
+                teams_list = group.get_teams_in_group()
+                for i in range(len(teams_list)):
+                    new_rank = i * self.num_groups + curr_rank
+                    teams_list[i][0].set_rank(new_rank)
+                curr_rank += 1
+        if self.sort_type == "Group Rank":
+            rank_list = []
+            for group_index in range(len(self.groups)):
+                teams_list = self.groups[group_index].get_teams_in_group()
+                if group_index == 0:
+                    for k in range(len(teams_list)):
+                        rank_list.append([])
+                for i in range(len(teams_list)):
+                    rank_list[i].append(teams_list[i])
+
+            for team_list in rank_list:
+                team_list.sort(key=lambda item: (item[7], item[6], item[4]), reverse=True)
+            curr_rank = self.high_rank
+            for team_list in rank_list:
+                for team in team_list:
+                    team[0].set_rank(curr_rank)
+                    curr_rank += 1
+            #for group in self.groups:
+                #teams_list
+        self.teams.sort(key=sort_helper_4)
+        for team in self.teams:
+            if team.get_rank() < self.lowest_advancing_rank:
+                print(team.get_name() + " advances.")
+#                text_output([team.get_name(), " advances."])
+                team.increment_round()
+            else:
+                print(team.get_name() + " is eliminated.")
+
+
+
+    def increment_matchday(self):
+        matchdays_to_play = False
+        for group in self.groups:
+            if group.increment_matchday():
+                matchdays_to_play = True
+        return matchdays_to_play
+
+
+class TieRound(Round):
+
+    def __init__(self, num_of_teams, robin, neutral, round_number, draw_style, print_package, sort_type="None"):
+        super().__init__(num_of_teams, robin, neutral, round_number, print_package, sort_type)
+        self.draw_style = draw_style
+        self.has_drawn = False
+        self.ties = []
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.print_package.append("Round " + str(round_number))
+        self.print_package.append(str(robin) + "-Leg Tie")
+
+    def draw_ties(self):
+        if self.draw_style == "Pots":
+            return self.draw_ties_pots()
+        elif self.draw_style == "Seeded":
+            return self.draw_ties_seeded()
+
+    def draw_ties_seeded(self):
+        ties = []
+        home_team_index = 0
+        away_team_index = len(self.teams) - 1
+        teams_helper = [None] * len(self.teams)
+        for i in range(len(self.teams)):
+            teams_helper[i] = self.teams[i]
+        teams_helper.sort(key=sort_helper_4)
+        while home_team_index < away_team_index:
+            new_tie = Tie([teams_helper[home_team_index], teams_helper[away_team_index]], self.neutral, self.robin, self.print_package)
+            home_team_index += 1
+            away_team_index -= 1
+            ties.append(new_tie)
+        return ties
+
+
+    def draw_ties_pots(self):
+        ties = []
+        pot1 = []
+        pot2 = []
+        pot_size = len(self.teams) // 2
+        for i in range(pot_size):
+            pot1.append(self.teams[i])
+            pot2.append(self.teams[i + pot_size])
+
+        for i in range(pot_size):
+            new_tie = [None, None]
+            lenpot = len(pot1)
+            rando = random.random()
+            numbo = int(lenpot * rando)
+            new_tie[1] = pot1.pop(numbo)
+            lenpot = len(pot2)
+            rando = random.random()
+            numbo = int(lenpot * rando)
+            new_tie[0] = pot2.pop(numbo)
+            new_tie_object = Tie(new_tie, self.neutral, self.robin, self.print_package)
+            ties.append(new_tie_object)
+        return ties
+
+    def increment_matchday(self):
+        matchdays_to_play = False
+        for tie in self.ties:
+            if tie.increment_matchday():
+                matchdays_to_play = True
+        return matchdays_to_play
+
+    def play_round(self):
+        if not self.has_drawn:
+            self.ties = self.draw_ties()
+        print()
+        matchdays_to_play = True
+        while matchdays_to_play:
+            for tie in self.ties:
+                tie.print_current_matchday()
+                tie.play_current_matchday()
+            matchdays_to_play = self.increment_matchday()
+        self.round_end()
+
+    def round_end(self):
+        curr_win_rank = self.high_rank
+        curr_lose_rank = self.low_rank
+
+        for tie in self.ties:
+            tie.print_result()
+            winner = tie.get_winner()
+            loser = tie.get_loser()
+            winner.increment_round()
+            winner.set_rank(curr_win_rank)
+            curr_win_rank += 1
+            loser.set_rank(curr_lose_rank)
+            curr_lose_rank -= 1
+            print(winner.get_name() + " advances.")
+            print(loser.get_name() + " is eliminated.")
+            # str(self.agg_away_score))
+            # print(away_country.get_name() + " is eliminated.")
+
+class KnockoutRound(Round):
+
+    def __init__(self, num_of_teams, robin, neutral, round_number, draw_style, print_package, sort_type="Bracket"):
+        super().__init__(num_of_teams, robin, neutral, round_number, print_package, sort_type)
+        self.draw_style = draw_style
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.print_package.append("Round " + str(round_number))
+        self.print_package.append("Knockout Round")
+
+    def play_round(self):
+        no_champion = True
+        knockout_round_number = 3
+        num_still_remaining = self.num_of_teams
+        while no_champion:
+            teams_for_round = []
+            knockout_round = TieRound(num_still_remaining, self.robin, self.neutral, knockout_round_number, self.draw_style, self.print_package)
+            knockout_round.set_teams(self.teams, self.high_rank, self.low_rank)
+            knockout_round.play_round()
+            knockout_round_number += 1
+            self.teams.sort(key=sort_helper_4)
+
+
+            num_still_remaining = num_still_remaining // 2
+
+            new_teams_list = [None]*num_still_remaining
+            for i in range(num_still_remaining):
+                new_teams_list[i] = self.teams[i]
+            self.teams = new_teams_list
+            if num_still_remaining == 1:
+                no_champion = False
+        print()
+        print(self.teams[i].get_name() + " is the champion.")
+            
+
+class CompetitionCountry:
+
+    def __init__(self, country, rank):
+        self.country = country
+        self.rank = rank
+        self.round = 1
+
+    def set_rank(self, rank):
+        self.rank = rank
+
+    def get_rank(self):
+        return self.rank
+
+    def get_round(self):
+        return self.round
+
+    def get_country(self):
+        return self.country
+
+    def get_code(self):
+        return self.country.get_code()
+
+    def get_name(self):
+        return self.country.get_name()
+
+    def get_elo(self):
+        return self.country.get_elo()
+
+    def get_region(self):
+        return self.country.get_region()
+
+    def get_conf(self):
+        return self.country.get_conf()
+
+    def increment_round(self):
+        self.round += 1
+
+    def set_elo(self, new_elo):
+        self.country.set_elo(new_elo)
+
+class Competition:
+
+    def __init__(self, title, conf, region, teams):
+        self.title = title
+        self.conf = conf
+        self.region = region
+        self.teams = []
+        self.current_round = 1
+        self.rounds = []
+        self.print_package = [self.title]
+        for i in range(len(teams)):
+            new_comp_country = CompetitionCountry(teams[i], i+1)
+            self.teams.append(new_comp_country)
+
+    def get_teams_for_round(self, round):
+        self.teams.sort(key=sort_helper_4, reverse=True)
+        num_of_teams = round.get_num_of_teams()
+        round_number = round.get_round_number()
+        competing_counter = num_of_teams
+        list_of_teams_in_round = []
+        first = True
+        high_rank = 0
+        low_rank = 0
+        for team in self.teams:
+            if team.get_round() < round_number:
+                continue
+            if competing_counter > 0:
+                if first:
+                    low_rank = team.get_rank()
+                    first = False
+                list_of_teams_in_round.append(team)
+                high_rank = team.get_rank()
+                competing_counter -= 1
+            else:
+                team.increment_round()
+        round.set_teams(list_of_teams_in_round, high_rank, low_rank)
+
+    def add_round(self, round_type, num_of_teams, num_advancing, neutral, robin, round_number, num_groups=1, draw_style="Pots", sort_type="None"):
+        new_round = None
+        if round_type == "Groups":
+            if sort_type is not None:
+                new_round = GroupRound(num_of_teams, robin, neutral, round_number, num_advancing, num_groups, self.print_package, sort_type)
+            else:
+                new_round = GroupRound(num_of_teams, robin, neutral, round_number, num_advancing, num_groups, self.print_package)
+        elif round_type == "Ties":
+            new_round = TieRound(num_of_teams, robin, neutral, round_number, draw_style, self.print_package, sort_type)
+        elif round_type == "Knockout":
+            new_round = KnockoutRound(num_of_teams, robin, neutral, round_number, draw_style, self.print_package, sort_type)
+        self.rounds.append(new_round)
+
+
+    def add_groups_round(self, num_of_teams_competing, group_number):
+        competing_counter = num_of_teams_competing
+        list_of_teams_in_round = []
+        self.teams.sort(key=sort_helper_3, reverse=True)
+        for team in self.teams:
+            if team[1] < self.current_round:
+                continue
+            if competing_counter > 0:
+                list_of_teams_in_round.append(team)
+                competing_counter -= 1
+            else:
+                team[1] += 1
+        list_of_teams_in_round.sort(key=sort_helper_3)
+        self.draw_groups(list_of_teams_in_round, group_number)
+
+    def draw_groups(self, teams, group_number):
+        pots = [[]]
+        groups = []
+        current_num = 0
+        pot_count = 0
+        end_num = group_number
+        while len(teams) > 0:
+            if current_num == end_num:
+                pots.append([])
+                pot_count += 1
+                current_num = end_num
+                end_num += group_number
+            pots[pot_count].append(teams.pop(0))
+            current_num += 1
+        print(pots)
+        for k in range(group_number):
+            new_group = []
+            for i in range(len(pots)):
+                if len(pots[i]) == 0:
+                    continue
+                lenpot = len(pots[i])
+                rando = random.random()
+                numbo = int(lenpot * rando)
+                new_group.append(pots[i].pop(numbo))
+            groups.append(new_group)
+        for group in groups:
+            countries_in_group = []
+            for country in group:
+                countries_in_group.append(country[0])
+            new_group = Group(countries_in_group, False, 1)
+            self.round_groups.append(new_group)
+        for group in self.round_groups:
+            group.print_standings()
+
+
+    def draw_ties(self, teams):
+        ties = []
+        pot1 = []
+        pot2 = []
+        pot_size = len(teams) // 2
+        for i in range(pot_size):
+            pot1.append(teams[i])
+            pot2.append(teams[i + pot_size])
+
+
+
+        for i in range(pot_size):
+            new_tie = []
+            lenpot = len(pot1)
+            rando = random.random()
+            numbo = int(lenpot * rando)
+            new_tie.append(pot1.pop(numbo))
+            lenpot = len(pot2)
+            rando = random.random()
+            numbo = int(lenpot * rando)
+            new_tie.append(pot2.pop(numbo))
+            ties.append(new_tie)
+        return ties
+
+    def add_ties_round(self, num_of_teams_competing, seeded=True):
+        self.teams.sort(key=sort_helper_3, reverse=True)
+        competing_counter = num_of_teams_competing
+        list_of_teams_in_round = []
+        for team in self.teams:
+            if team[1] < self.current_round:
+                continue
+            if competing_counter > 0:
+                list_of_teams_in_round.append(team)
+                competing_counter -= 1
+            else:
+                team[1] += 1
+        round_ties_help = self.draw_ties(list_of_teams_in_round)
+        for tie in round_ties_help:
+            countries_in_tie = []
+            for country in tie:
+                countries_in_tie.append(country[0])
+            new_group = Group(countries_in_tie, False, 2, tie=True)
+            self.round_groups.append(new_group)
+        for group in self.round_groups:
+            group.print_standings()
+
+
+    def play_current_round(self):
+        current_round = self.rounds[self.current_round - 1]
+        self.get_teams_for_round(current_round)
+        current_round.play_round()
+        self.current_round += 1
+
+
+
+    def print_current_matchday(self, round_groups):
+        for group in round_groups:
+            group.print_current_matchday()
+
+    def play_current_matchday(self, round_groups):
+        for group in round_groups:
+            group.play_current_matchday()
+
+    def increment_matchday(self, round_groups):
+        matchdays_to_play = False
+        for group in round_groups:
+            if group.increment_matchday():
+                matchdays_to_play = True
+        return matchdays_to_play
+
+    def get_title(self):
+        return self.title
+
+class Match:
+
+    def __init__(self, home_country, away_country, print_package, home_score=0, away_score=0, neutral=False, played=False, winner=False):
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.home_country = home_country
+        self.away_country = away_country
+        self.home_score = home_score
+        self.away_score = away_score
+        self.neutral = neutral
+        self.played = played
+        self.winner = winner
+        self.pens = False
+        self.pwinner = 0
+        self.aggregate = 0
+        self.display_string = ''
+        self.set_print_package()
+
+    def set_print_package(self):
+        self.print_package.append(self.home_country.get_name() + " vs. " + self.away_country.get_name())
+
+    def add_to_display_string(self, new_str_things):
+        for new_str in new_str_things:
+            self.display_string += new_str
+
+    def set_winner_true(self):
+        self.winner = True
+
+    def set_aggregate(self, home_score, away_score):
+        self.print_package.append("(First Leg: " + self.away_country.get_name() + " " + str(away_score) + " - " + str(home_score) + " " + self.home_country.get_name() + ")")
+        self.aggregate = home_score - away_score
+
+    def get_home_goals(self):
+        return self.home_score
+
+    def get_away_goals(self):
+        return self.away_score
+
+    def get_home_code(self):
+        return self.home_country.get_code()
+
+    def get_away_code(self):
+        return self.away_country.get_code()
+
+    def get_pens(self):
+        return self.pens
+
+    def get_pwinner(self):
+        return self.pwinner
+
+    def print_match(self):
+        return
+        if not self.played:
+            #print(self.home_country.get_code() + " vs. " + self.away_country.get_code())
+            self.add_to_display_string([self.home_country.get_code(), ' vs. ', self.away_country.get_code(), '\n'])
+        else:
+            #print(self.home_country.get_code + " " + str(self.home_score) + " - " + str(self.away_score) + " " + self.away_country.get_code())
+            self.add_to_display_string([self.home_country.get_code, " ", str(self.home_score), " - ", str(self.away_score),
+                                       " ", self.away_country.get_code(), "\n"])
+
+    def play_match(self):
+        if self.played:
+            #print("Match already played")
+            self.add_to_display_string(["Match already played", '\n'])
+        else:
+            elo_home_string = "{:.3f}".format(self.home_country.get_elo())
+            elo_away_string = "{:.3f}".format(self.away_country.get_elo())
+            self.print_package.append(elo_home_string + " vs. " + elo_away_string)
+            self.print_package.append("------------MATCH BEGIN------------------")
+            self.sim_game()
+            self.played = True
+        for old_str in self.print_package:
+            print(old_str)
+        print(self.display_string)
+
+    def sim_game(self):
+        diff = self.home_country.get_elo() - self.away_country.get_elo()
+        home_score = 0
+        away_score = 0
+        if not self.neutral:
+            diff = diff + 100
+        home_rand = .017 + (.000017 * diff)
+        away_rand = .017 - (.000017 * diff)
+        if home_rand < .002:
+            home_rand = .002
+        if away_rand < .002:
+            away_rand = .002
+        # print(home_rand)
+        # print(away_rand)
+        for i in range(1, 91):
             if random.random() < home_rand:
-                print(home_country.get_name() + " Goal in minute " + str(i))
+                self.print_package.append(self.home_country.get_name() + " Goal in minute " + str(i))
+                #self.add_to_display_string([self.home_country.get_name(), " Goal in minute ", str(i), '\n'])
                 home_score = home_score + 1
             if random.random() < away_rand:
-                print(away_country.get_name() + " Goal in minute " + str(i))
+                self.print_package.append(self.away_country.get_name() + " Goal in minute " + str(i))
+                #self.add_to_display_string([self.away_country.get_name(), " Goal in minute ", str(i), '\n'])
                 away_score = away_score + 1
 
-        print("Final score (after extra time): " + home_country.get_code() + str(home_score) + "-" +
-              away_country.get_code() + str(away_score) + "\n")
 
-    pens = False
-    pwinner = 0
-    if ((home_score + aggregate) == away_score) and winner:
-        pens = True
-        if random.random() < 0.5:
-            print(home_country.get_name() + " wins in penalty shootout!")
-            pwinner = 0
+        #self.add_to_display_string(["Final score: ", self.home_country.get_code(), str(home_score), "-", self.away_country.get_code(),
+              #str(away_score), "\n"])
+        self.print_package.append("------------------FULL TIME-----------------")
+        self.print_package.append("Final score: " + self.home_country.get_code() + str(home_score) + "-" + self.away_country.get_code() + str(away_score) + "\n")
+        result = home_score - away_score
+
+        if (result + self.aggregate == 0) and self.winner:
+            for i in range(91, 121):
+                if random.random() < home_rand:
+                    #print(self.home_country.get_name() + " Goal in minute " + str(i))
+                    self.add_to_display_string([self.home_country.get_name(), " Goal in minute ", str(i), '\n'])
+                    home_score = home_score + 1
+                if random.random() < away_rand:
+                    #print(self.away_country.get_name() + " Goal in minute " + str(i))
+                    self.add_to_display_string([self.away_country.get_name(), " Goal in minute ", str(i), '\n'])
+                    away_score = away_score + 1
+
+            #print("Final score (after extra time): " + self.home_country.get_code() + str(home_score) + "-" +
+                  #self.away_country.get_code() + str(away_score) + "\n")
+            self.add_to_display_string(["Final score (after extra time): ", self.home_country.get_code(), str(home_score), "-",
+                  self.away_country.get_code(), str(away_score), "\n"])
+
+        pens = False
+        pwinner = 0
+        if ((home_score + self.aggregate) == away_score) and self.winner:
+            pens = True
+            if random.random() < 0.5:
+                #print(self.home_country.get_name() + " wins in penalty shootout!")
+                self.add_to_display_string([self.home_country.get_name(), " wins in penalty shootout!", '\n'])
+                pwinner = 0
+            else:
+                #print(self.away_country.get_name() + " wins in penalty shootout!")
+                self.add_to_display_string([self.away_country.get_name(), " wins in penalty shootout!", '\n'])
+                pwinner = 1
+
+        set_elo(self.home_country, self.away_country, result, not self.neutral)
+        self.home_score = home_score
+        self.away_score = away_score
+        self.pens = pens
+        self.pwinner = pwinner
+
+class Tie:
+
+    def __init__(self, teams, neutral, robin, print_package):
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.teams = teams
+        self.neutral = neutral
+        self.robin = robin
+        self.current_matchday = 0
+        self.matchdays = self.create_match_list()
+        self.agg_home_score = 0
+        self.agg_away_score = 0
+        self.pwinner = None
+        self.winner = None
+        self.loser = None
+        self.win_score = 0
+        self.lose_score = 0
+
+
+
+    def get_winner(self):
+        return self.winner
+
+    def get_loser(self):
+        return self.loser
+
+    def increment_matchday(self):
+        self.current_matchday += 1
+        if self.current_matchday >= len(self.matchdays):
+            return False
+        return True
+
+    def create_match_list(self):
+        home_match = Match(self.teams[0], self.teams[1], self.print_package)
+        away_match = Match(self.teams[1], self.teams[0], self.print_package)
+        if self.robin == 1:
+            return [home_match]
+        if self.robin == 2:
+            return [away_match, home_match]
+
+    def print_current_matchday(self):
+        return
+        match = self.matchdays[self.current_matchday]
+        if self.current_matchday == 1:
+            print("First Leg: " + match.get_away_code() + ": " + str(self.agg_away_score) + " " + match.get_home_code()
+                  + ": " + str(self.agg_home_score))
+        print(match.get_home_code() + " vs. " + match.get_away_code())
+
+    def play_current_matchday(self):
+        match = self.matchdays[self.current_matchday]
+        if self.current_matchday == 1:
+            match.set_aggregate(self.agg_home_score, self.agg_away_score)
+            match.set_winner_true()
+        if len(self.matchdays) == 1:
+            match.set_winner_true()
+        match.play_match()
+        self.update_stats(match)
+        if self.current_matchday == len(self.matchdays) - 1:
+            self.decide_winners()
+
+    def update_stats(self, match):
+        if len(self.matchdays) == 2 and self.current_matchday == 0:
+            self.agg_away_score += match.get_home_goals()
+            self.agg_home_score += match.get_away_goals()
         else:
-            print(away_country.get_name() + " wins in penalty shootout!")
-            pwinner = 1
+            self.agg_away_score += match.get_away_goals()
+            self.agg_home_score += match.get_home_goals()
+        self.pwinner = match.get_pwinner()
 
-    set_elo(home_country, away_country, result, not neutral)
-    resultuple = (home_score, away_score, pens, pwinner)
-    return resultuple
+    def print_result(self):
+        print(self.winner.get_name() + ": " + str(self.win_score) + " - " + self.loser.get_name() + ": " + str(self.lose_score))
+        if self.win_score == self.lose_score:
+            print(self.winner.get_name() + " wins the penalty shootout.")
+
+    def decide_winners(self):
+        home_country = self.teams[0]
+        away_country = self.teams[1]
+        if self.agg_home_score > self.agg_away_score:
+            #home_country.increment_round()
+            #print(home_country.get_name() + " advances with an aggregate score " + str(self.agg_home_score) + "-" +
+                  #str(self.agg_away_score))
+            #print(away_country.get_name() + " is eliminated.")
+            self.winner = home_country
+            self.loser = away_country
+            self.win_score = self.agg_home_score
+            self.lose_score = self.agg_away_score
+        elif self.agg_home_score < self.agg_away_score:
+            #away_country.increment_round()
+            #print(away_country.get_name() + " advances with an aggregate score " + str(self.agg_away_score) + "-" +
+                  #str(self.agg_home_score))
+            #print(home_country.get_name() + " is eliminated.")
+            self.winner = away_country
+            self.loser = home_country
+            self.win_score = self.agg_away_score
+            self.lose_score = self.agg_home_score
+        else:
+            if self.pwinner == 0:
+                #home_country.increment_round()
+                #print(home_country.get_name() + " advances on penalties after an aggregate score "
+                      #+ str(self.agg_away_score) + "-" + str(self.agg_home_score))
+                #print(away_country.get_name() + " is eliminated.")
+                self.winner = home_country
+                self.loser = away_country
+            else:
+                #away_country.increment_round()
+                #print(away_country.get_name() + " advances on penalties after an aggregate score "
+                      #+ str(self.agg_away_score) + "-" + str(self.agg_home_score))
+                #print(home_country.get_name() + " is eliminated.")
+                self.winner = away_country
+                self.loser = home_country
+            self.win_score = self.agg_away_score
+            self.lose_score = self.agg_home_score
+
+
+
+
+
+class Group:
+
+    def __init__(self, teams, neutral, robin, print_package):
+        self.print_package = []
+        for part in print_package:
+            self.print_package.append(part)
+        self.teams_in_group = []
+        for team in teams:
+            # 0-country object, 1-wins, 2-draws, 3-losses, 4-goals for, 5-goals against, 6-goal difference, 7-points
+            group_team = [team, 0, 0, 0, 0, 0, 0, 0]
+            self.teams_in_group.append(group_team)
+
+        self.neutral = neutral
+        self.robin = robin
+        self.matchdays = self.create_match_list()
+        self.current_matchday = 0
+
+
+    def get_next_matchday(self):
+        return self.matchdays[self.current_matchday]
+
+    def increment_matchday(self):
+        self.current_matchday += 1
+        if self.current_matchday >= len(self.matchdays):
+            return False
+        return True
+
+    def get_current_matchday(self):
+        if self.current_matchday >= len(self.matchdays):
+            return -1
+        return self.current_matchday
+
+    def print_current_matchday(self):
+        for match in self.matchdays[self.current_matchday]:
+            print(match.get_home_code() + " vs. " + match.get_away_code())
+
+    def play_current_matchday(self):
+        for match in self.matchdays[self.current_matchday]:
+            match.play_match()
+            self.update_stats(match)
+            print()
+
+
+    #def input_match(self, home_country, away_country, result):
+        #self.update_stats((self.matchdays[i_1][i_2][0]), result[0], result[1])
+        #self.update_stats((self.matchdays[i_1][i_2][1]), result[1], result[0])
+
+    def update_stats(self, match):
+        home_goals = match.get_home_goals()
+        away_goals = match.get_away_goals()
+        for i in range(len(self.teams_in_group)):
+            if match.get_home_code() == self.teams_in_group[i][0].get_code():
+                index = i
+        home_team_stats_list = self.get_teams_in_group()[index]
+        for i in range(len(self.teams_in_group)):
+            if match.get_away_code() == self.teams_in_group[i][0].get_code():
+                index = i
+        away_team_stats_list = self.get_teams_in_group()[index]
+        if home_goals > away_goals:
+            home_team_stats_list[1] = home_team_stats_list[1] + 1
+            home_team_stats_list[7] = home_team_stats_list[7] + 3
+            away_team_stats_list[3] = away_team_stats_list[3] + 1
+        elif home_goals == away_goals:
+            home_team_stats_list[2] = home_team_stats_list[2] + 1
+            home_team_stats_list[7] = home_team_stats_list[7] + 1
+            away_team_stats_list[2] = away_team_stats_list[2] + 1
+            away_team_stats_list[7] = away_team_stats_list[7] + 1
+        else:
+            home_team_stats_list[3] = home_team_stats_list[3] + 1
+            away_team_stats_list[1] = away_team_stats_list[1] + 1
+            away_team_stats_list[7] = away_team_stats_list[7] + 3
+        home_team_stats_list[4] = home_team_stats_list[4] + home_goals
+        home_team_stats_list[5] = home_team_stats_list[5] + away_goals
+        home_team_stats_list[6] = home_team_stats_list[4] - home_team_stats_list[5]
+        away_team_stats_list[4] = away_team_stats_list[4] + away_goals
+        away_team_stats_list[5] = away_team_stats_list[5] + home_goals
+        away_team_stats_list[6] = away_team_stats_list[4] - away_team_stats_list[5]
+
+
+
+    def next_matchday(self):
+        self.current_matchday = self.current_matchday + 1
+
+    def get_teams_in_group(self):
+        return self.teams_in_group
+
+    def get_neutral(self):
+        return self.neutral
+
+    def create_match_list(self):
+        odd = True
+        matchday_num = len(self.teams_in_group)
+        positions = (matchday_num + 1) // 2
+        if len(self.teams_in_group) % 2 == 0:
+            odd = False
+            matchday_num = matchday_num - 1
+        matchday_num = matchday_num * self.robin
+        matchdays = []
+
+        pos_array = [None]*positions
+        for i in range(len(pos_array)):
+            pos_array[i] = i
+
+        for i in range(matchday_num):
+            curr_match_day = []
+            for j in range(positions - 1):
+                team1 = self.teams_in_group[pos_array[j]][0]
+                temp = ((positions - j) - 1) * 2
+                team2 = self.teams_in_group[(pos_array[j] + temp) % ((positions * 2) - 1)][0]
+                if i % 2 == 0:
+                    new_match = Match(team1, team2, self.print_package)
+                    curr_match_day.append(new_match)
+                else:
+                    new_match = Match(team2, team1, self.print_package)
+                    curr_match_day.append(new_match)
+                #print("______")
+            if not odd:
+                team1 = self.teams_in_group[pos_array[positions - 1]][0]
+                team2 = self.teams_in_group[len(self.teams_in_group) - 1][0]
+                if i % 2 == 0:
+                    new_match = Match(team1, team2, self.print_package)
+                    curr_match_day.append(new_match)
+                    #curr_match_day.append([team1, team2, False])
+                else:
+                    new_match = Match(team2, team1, self.print_package)
+                    curr_match_day.append(new_match)
+                    #curr_match_day.append([team2, team1, False])
+            # print("____")
+            # print("____")
+            for k in range(len(pos_array)):
+                if pos_array[k] == 0:
+                    if odd:
+                        pos_array[k] = len(self.teams_in_group) - 1
+                    else:
+                        pos_array[k] = len(self.teams_in_group) - 2
+                else:
+                    pos_array[k] = pos_array[k] - 1
+            matchdays.append(curr_match_day)
+        if self.robin == 2 and len(matchdays) == 6:
+            temp = matchdays[0]
+            matchdays[0] = matchdays[3]
+            matchdays[3] = temp
+        return matchdays
+
+    def get_standings(self):
+        self.teams_in_group.sort(key=lambda item: (item[7], item[6], item[4]), reverse=True)
+        return self.teams_in_group
+
+
+    def print_standings(self):
+        self.get_standings()
+        print("                                      W - D - L  GF-GA\tGD\tPTS")
+        index = 1
+        for team_array in self.teams_in_group:
+            print(f"{index}  {team_array[0].get_code()}  {team_array[0].get_name():30}{team_array[1]} - "
+                  f"{team_array[2]} - {team_array[3]}   {team_array[4]}-{team_array[5]}   "
+                  f"{team_array[6]}    {team_array[7]}")
+            index = index + 1
+            #print(str(index) + "\t" + team_array[0].get_code() + "\t\t" + team_array[0].get_name() + "\t\t" +
+            #      str(team_array[1]) + "-" + str(team_array[2]) + "-" + str(team_array[3]) + "\t" + str(team_array[4])
+            #      + "-" + str(team_array[5]) + "\t\t" + str(team_array[6]))
+        print()
+
+
+class Country:
+
+    def __init__(self, code, name, elo, conf, region):
+        self.conf = conf
+        self.region = region
+        self.code = code
+        self.name = name
+        self.elo = float(elo)
+
+    def get_code(self):
+        return self.code
+
+    def get_name(self):
+        return self.name
+
+    def get_region(self):
+        return self.region
+
+    def get_elo(self):
+        return self.elo
+
+    def set_elo(self, elo):
+        self.elo = elo
+
+    def get_conf(self):
+        return self.conf
 
 
 class Runner:
@@ -1154,6 +1237,7 @@ class Runner:
                       str(int(country.get_elo())))
                 index = index + 1
 
+    # Opens Text File, creates Country objects, adds to self.countries_list
     def load_countries(self, file_name):
 
         for line in open(file_name, 'r'):
@@ -1253,7 +1337,7 @@ class Runner:
         set_elo(hc, ac, result, not neutral)
 
     def run_game_auto(self, team1, team2, neu, winner):
-        return sim_game(team1, team2, neu, winner)
+        Match.sim_game(team1, team2, neu, winner)
 
     def run_game(self):
         not_ready_to_exit = True
@@ -1273,7 +1357,7 @@ class Runner:
             if hc is not None and ac is not None:
                 not_ready_to_exit = False
 
-        sim_game(hc, ac, neu, winner)
+        Match.sim_game(hc, ac, neu, winner)
 
     def extra_time(self, neutral):
         not_ready_to_exit = True
